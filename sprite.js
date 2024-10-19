@@ -23,8 +23,8 @@ class Sprite {
 
         this.timeout = 200
 
-        this.repaint()
-        this.move()
+        this.repaint.bind(this)()
+        this.move.bind(this)()
     }
 
     repaint() {
@@ -41,13 +41,22 @@ class Sprite {
         }
         data[this.y][this.x] = this.spriteCode
         this.repaint()
-        console.log(data)
         setTimeout(this.move.bind(this), this.timeout)
     }
 
     canMove() {
         return true
     }
+
+    destroy() {
+        let box = document.getElementsByClassName(`${this.x}x${this.y}`)[0]
+        box.destroyAnimation(box)
+
+        data[this.y][this.x] = 0
+        container.removeChild(this.element)
+        delete this
+    }
 }
 
 let sprite = new Sprite(5,10,2)
+setTimeout(sprite.destroy.bind(sprite), 1000)
