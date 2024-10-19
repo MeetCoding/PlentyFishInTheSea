@@ -15,6 +15,7 @@ for(let y=0; y<gridRows; y++) {
         let box = document.createElement("div")
         box.classList.add("box", `${x}x${y}`)
         box.style.gridArea = `${y+1} / ${x+1} / ${y+2} / ${x+2}`
+        box.innerText = `${x}x${y}`
         container.appendChild(box)
     }
 }
