@@ -57,6 +57,9 @@ class Sprite {
         this.element = document.createElement("div")
         this.element.classList.add("sprite", `code${spriteCode}`)
 
+        this.skipMove = 0
+        this.maxSkipMove = 1
+
         this.setPosition(x, y)
         this.setVelocity(0, 0)
     }
@@ -97,13 +100,24 @@ class Sprite {
         return this.game.isPositionFree(x, y)
     }
 
+    setMaxSkipMove(maxSkipMove) {
+        this.maxSkipMove = maxSkipMove
+    }
+
     move() {
-        let [x, y] = this.getNextPosition()
-        this.setPosition(x, y)
-        this.updateElement()
+        if(this.skipMove >= this.maxSkipMove) {
+            let [x, y] = this.getNextPosition()
+            this.setPosition(x, y)
+            this.updateElement()
+            this.skipMove = 0
+        }
+        else {
+            this.skipMove++
+        }
     }
 
     destroy() {
+        console.log('hey')
         this.preDeath()
         this.game.removeSprite(this.id)
         delete this
@@ -140,7 +154,7 @@ class AttackWall extends Wall {
         super(game, x, y)
 
         this.attackCount = 0
-        this.attackMaxCount = 20
+        this.attackMaxCount = 15
 
         this.xRange = []
         this.yRange = []
@@ -167,6 +181,12 @@ class AttackWall extends Wall {
     bindWheel() {
         this.getElement().addEventListener("wheel", event => {
             this.range -= Math.sign(event.deltaY)
+            if(this.range < 1) {
+                this.range = 1
+            }
+            if(this.range > Math.max(...this.game.getDimensions())) {
+                this.range = Math.max(...this.game.getDimensions())
+            }
             this.setAttackRange()
         })
     }
@@ -192,7 +212,6 @@ class AttackWall extends Wall {
     }
 
     preDeath() {
-        console.log('hello?')
         this.removeHighlightRange()
     }
 
@@ -206,6 +225,60 @@ class AttackWall extends Wall {
         this.attackCount = 0
         for(let index of this.getRangeIndexes()) {
             this.game.killBox(index[0], index[1])
+        }
+    }
+}
+
+class Shark extends Sprite {
+
+    constructor(game, x, y, target) {
+        super(game, x, y, 3)
+        this.target = target
+        this.switchWatcher = 0
+        this.switchMax = 5
+        this.setMaxSkipMove(2)
+    }
+
+    loop() {
+        if(this.canMove()) {
+            this.move()
+        }
+        this.steerX()
+        let [xn, yn] = this.getNextPosition()
+        if(xn==this.target.x && yn==this.target.y) {
+            this.game.killBox(xn, yn)
+        }
+    }
+
+    steerX() {
+        if(this.switchWatcher >= this.switchMax) {
+            this.switchWatcher = 0
+            this.steerY()
+            return
+        }
+        this.switchWatcher++
+        let x = this.target.x
+        if(x>this.x) {this.setVelocity(1, 0)}
+        if(x<this.x) {this.setVelocity(-1, 0)}
+        if(x==this.x) {
+            this.steerY()
+            this.switchWatcher = this.switchMax
+        }
+    }
+
+    steerY() {
+        if(this.switchWatcher >= this.switchMax) {
+            this.switchWatcher = 0
+            this.steerX()
+            return
+        }
+        this.switchWatcher++
+        let y = this.target.y
+        if(y>this.y) {this.setVelocity(0, 1)}
+        if(y<this.y) {this.setVelocity(0, -1)}
+        if(y==this.y) {
+            this.steerX()
+            this.switchWatcher = this.switchMax
         }
     }
 }
@@ -228,8 +301,6 @@ class Box {
         this.y = y
 
         this.highlighted = false
-
-        
 
         this.bindClick()
     }
@@ -291,6 +362,9 @@ class Game {
         this.timout = 100
         this.boxSize = 50
 
+        this.sharkCount = 0
+        this.sharkMaxCount = 80
+
         this.setDimensions()
     }
 
@@ -344,8 +418,18 @@ class Game {
         box.removeHighlight()
     }
 
+    setMainCharacter(xo, yo) {
+        let main = new Sprite(this, xo, yo, 2)
+        main.setId(this.sprites.length)
+        main.preDeath = () => {
+            location.reload()
+        }
+        this.sprites.push(main)
+        container.appendChild(main.getElement())
+        return main
+    }
+
     addSprite(xo, yo, spriteCode) {
-        
         let sprite = new Sprite(this, xo, yo, spriteCode)
         sprite.setId(this.sprites.length)
         this.sprites.push(sprite)
@@ -353,7 +437,6 @@ class Game {
     }
 
     addWall(xo, yo) {
-
         let wall = new Wall(this, xo, yo)
         wall.setId(this.sprites.length)
         this.sprites.push(wall)
@@ -365,6 +448,13 @@ class Game {
         awall.setId(this.sprites.length)
         this.sprites.push(awall)
         container.appendChild(awall.getElement())
+    }
+
+    addShark(xo, yo, target) {
+        let shark = new Shark(this, xo, yo, target)
+        shark.setId(this.sprites.length)
+        this.sprites.push(shark)
+        container.appendChild(shark.getElement())
     }
 
     getAllSprites() {
@@ -404,7 +494,24 @@ class Game {
         return x>=0 && x<this.gridColumns && y>=0 && y<this.gridRows
     }
 
+    start() {
+        let main = game.setMainCharacter(0, 0)
+        this.main = main
+        let [columns, rows] = this.getDimensions()
+        this.addShark(columns-1, rows-1, main)
+        this.addShark(0, rows-1, main)
+        this.addShark(columns-1, 0, main)
+        game.loop()
+        bindJoyStick(main)
+    }
+
     loop() {
+        if(this.sharkCount>=this.sharkMaxCount) {
+            let [columns, rows] = this.getDimensions()
+            this.addShark(columns-1, rows-1, this.main)
+            this.sharkCount = 0
+        }
+        this.sharkCount++
         this.sprites.forEach(sprite => {
             if(sprite != undefined)
                 sprite.loop()
@@ -422,7 +529,5 @@ for(let x=0; x<gridColumns; x++) {
     }
 }
 
-game.loop()
-game.addSprite(5, 5, 2)
-bindJoyStick(game.getAllSprites()[0])
+game.start()
 
